@@ -1,0 +1,31 @@
+{
+  "name": "knowledge-base-center-for-isv",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx --env-file=.env src/server.ts",
+    "start": "tsx --env-file=.env src/server.ts",
+    "typecheck": "tsc --noEmit",
+    "diag:db": "node --env-file=.env --experimental-strip-types src/diagnostics/db-connection.ts",
+    "diag:minimal": "tsx src/diagnostics/minimal-server.ts",
+    "diag:imports": "node --env-file=.env --experimental-strip-types src/diagnostics/profile-imports.ts",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "drizzle-kit migrate",
+    "db:push": "drizzle-kit push",
+    "db:studio": "drizzle-kit studio"
+  },
+  "dependencies": {
+    "@hono/node-server": "^1.19.11",
+    "drizzle-orm": "^0.45.1",
+    "hono": "^4.12.7",
+    "postgres": "^3.4.8",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@types/node": "^25.5.0",
+    "drizzle-kit": "^0.31.9",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3"
+  }
+}

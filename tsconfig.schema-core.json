@@ -1,0 +1,8 @@
+{
+  "extends": "./tsconfig.json",
+  "include": [
+    "src/domain/constants.ts",
+    "src/db/schema/base.ts",
+    "src/db/schema/core.ts"
+  ]
+}
