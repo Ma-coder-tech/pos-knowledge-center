@@ -1,3 +1,5 @@
+import { escapeHtml, renderMarkdown, stripMarkdown } from "./markdown";
+
 type TenantView = {
   id: string;
   name: string;
@@ -13,52 +15,6 @@ type ShellOptions = {
   searchValue?: string;
   body: string;
 };
-
-function escapeHtml(value: string) {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
-}
-
-function stripMarkdown(markdown: string) {
-  return markdown
-    .replace(/`{1,3}[^`]+`{1,3}/g, "")
-    .replace(/[#>*_\-]+/g, " ")
-    .replace(/\[(.*?)\]\((.*?)\)/g, "$1")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-function renderMarkdown(markdown: string) {
-  const escaped = escapeHtml(markdown).replace(/\r\n/g, "\n");
-  const blocks = escaped.split(/\n{2,}/).map((block) => block.trim()).filter(Boolean);
-
-  return blocks
-    .map((block) => {
-      if (block.startsWith("### ")) {
-        return `<h3>${block.slice(4)}</h3>`;
-      }
-
-      if (block.startsWith("## ")) {
-        return `<h2>${block.slice(3)}</h2>`;
-      }
-
-      if (block.startsWith("# ")) {
-        return `<h1>${block.slice(2)}</h1>`;
-      }
-
-      const lines = block.split("\n");
-      if (lines.every((line) => line.startsWith("- "))) {
-        return `<ul>${lines.map((line) => `<li>${line.slice(2)}</li>`).join("")}</ul>`;
-      }
-
-      return `<p>${block.replace(/\n/g, "<br />")}</p>`;
-    })
-    .join("");
-}
 
 function formatDate(value: Date | string | null | undefined) {
   if (!value) {
@@ -355,6 +311,30 @@ function shell({ title, subtitle, tenant, currentPath, searchValue, body }: Shel
         margin: 0;
         padding-left: 22px;
       }
+      .kb-prose a {
+        color: var(--brand-strong);
+      }
+      .kb-prose code {
+        font-family: "SFMono-Regular", "Menlo", monospace;
+        background: rgba(27, 26, 23, 0.06);
+        padding: 2px 6px;
+        border-radius: 8px;
+      }
+      .kb-media {
+        margin: 0;
+        display: grid;
+        gap: 8px;
+      }
+      .kb-media-image {
+        width: 100%;
+        border-radius: 18px;
+        border: 1px solid rgba(60, 44, 28, 0.08);
+        background: white;
+      }
+      .kb-media-caption {
+        color: var(--muted);
+        font-size: 0.92rem;
+      }
       .kb-empty {
         padding: 24px;
         border-radius: 18px;
@@ -501,7 +481,7 @@ export function renderTenantChooser(tenants: TenantView[]) {
     ? `<section class="kb-card">
          <div class="kb-section-title">
            <div>
-             <p class="kb-eyebrow">Choose a workspace</p>
+             <p class="kb-eyebrow">Choose a company portal</p>
              <h2>Open a live merchant knowledge center</h2>
            </div>
          </div>
@@ -510,7 +490,7 @@ export function renderTenantChooser(tenants: TenantView[]) {
              .map(
                (tenant) => `
                  <a class="kb-tenant-card" href="/kb/${tenant.slug}">
-                   <p class="kb-eyebrow">Tenant</p>
+                   <p class="kb-eyebrow">Company portal</p>
                    <h3>${escapeHtml(tenant.name)}</h3>
                    <p>${escapeHtml(tenant.slug)}</p>
                    <div class="kb-pill-row">
@@ -525,7 +505,7 @@ export function renderTenantChooser(tenants: TenantView[]) {
 
   return shell({
     title: "Explore the knowledge experience",
-    subtitle: "This read-only UI demonstrates how merchants can browse articles, run guided troubleshooting, and learn from solved issues.",
+    subtitle: "This read-only UI demonstrates how merchants can search, read help guides, and resolve issues without waiting on support.",
     body,
   });
 }
@@ -562,7 +542,7 @@ export function renderTenantDashboard({
             <h2>One destination for merchant self-service</h2>
           </div>
         </div>
-        <p>Browse product knowledge, open a guided troubleshooting flow, or look up a solved issue before contacting support.</p>
+        <p>Search for an answer, open a guide, or step through troubleshooting without leaving the portal.</p>
         <div class="kb-pill-row">
           <span class="kb-badge">${articles.length} articles</span>
           <span class="kb-badge">${flows.length} troubleshooting flows</span>

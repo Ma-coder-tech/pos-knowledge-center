@@ -17,6 +17,15 @@ import {
   renderTenantDashboard,
 } from "../views/knowledge-base";
 
+function findPreferredTenants<T extends { slug: string; name: string }>(tenants: T[]) {
+  const demoTenants = tenants.filter(
+    (tenant) =>
+      tenant.slug.toLowerCase().includes("demo") || tenant.name.toLowerCase().includes("demo"),
+  );
+
+  return demoTenants.length > 0 ? demoTenants : tenants;
+}
+
 async function requireTenant(database: Database, tenantSlug: string) {
   const tenant = await getTenantBySlug(database, tenantSlug);
 
@@ -35,7 +44,12 @@ export function createKnowledgeBaseRouter(database: Database) {
   const router = new Hono();
 
   router.get("/", async (context) => {
-    const tenants = await listTenants(database);
+    const tenants = findPreferredTenants(await listTenants(database));
+
+    if (tenants.length === 1) {
+      return context.redirect(`/kb/${tenants[0].slug}`);
+    }
+
     return context.html(
       renderTenantChooser(
         tenants.map((tenant) => ({
@@ -54,7 +68,7 @@ export function createKnowledgeBaseRouter(database: Database) {
 
     const [articles, allFlows, issues] = await Promise.all([
       listKnowledgeBaseArticles(database, tenant.id, { q, limit: 6 }),
-      listFlows(database, tenant.id, { limit: 12 }),
+      listFlows(database, tenant.id, { limit: 12, status: "published" }),
       listSolvedIssues(database, tenant.id, { q, limit: 6 }),
     ]);
 
@@ -92,7 +106,7 @@ export function createKnowledgeBaseRouter(database: Database) {
     const tenant = await requireTenant(database, context.req.param("tenantSlug"));
     const article = await getContentBySlug(database, tenant.id, context.req.param("contentSlug"));
 
-    if (!article) {
+    if (!article || article.currentStatus !== "published" || article.audience === "internal") {
       throw new AppError(404, "not_found", "Article not found.");
     }
 
@@ -102,7 +116,7 @@ export function createKnowledgeBaseRouter(database: Database) {
   router.get("/:tenantSlug/flows", async (context) => {
     const tenant = await requireTenant(database, context.req.param("tenantSlug"));
     const q = parseSearch(context.req.query("q"));
-    const allFlows = await listFlows(database, tenant.id, { limit: 48 });
+    const allFlows = await listFlows(database, tenant.id, { limit: 48, status: "published" });
     const flows = allFlows
       .filter((flow) => flow.audience !== "internal")
       .filter((flow) => {
@@ -121,11 +135,22 @@ export function createKnowledgeBaseRouter(database: Database) {
   router.get("/:tenantSlug/flows/:flowId", async (context) => {
     const tenant = await requireTenant(database, context.req.param("tenantSlug"));
     const flow = await getFlowById(database, tenant.id, context.req.param("flowId"));
+
+    if (flow.status !== "published" || flow.audience === "internal") {
+      throw new AppError(404, "not_found", "Troubleshooting flow not found.");
+    }
+
     return context.html(renderFlowDetail({ tenant, flow }));
   });
 
   router.post("/:tenantSlug/flows/:flowId/start", async (context) => {
     const tenant = await requireTenant(database, context.req.param("tenantSlug"));
+    const flow = await getFlowById(database, tenant.id, context.req.param("flowId"));
+
+    if (flow.status !== "published" || flow.audience === "internal") {
+      throw new AppError(404, "not_found", "Troubleshooting flow not found.");
+    }
+
     const result = await startFlowSession(database, tenant.id, context.req.param("flowId"), { mode: "text" });
     return context.redirect(`/kb/${tenant.slug}/sessions/${result.session.id}`);
   });
@@ -167,7 +192,7 @@ export function createKnowledgeBaseRouter(database: Database) {
     const tenant = await requireTenant(database, context.req.param("tenantSlug"));
     const issue = await getSolvedIssueById(database, tenant.id, context.req.param("issueId"));
 
-    if (!issue) {
+    if (!issue || issue.status !== "published" || issue.audienceRecommendation === "internal") {
       throw new AppError(404, "not_found", "Solved issue not found.");
     }
 

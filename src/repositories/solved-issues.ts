@@ -107,7 +107,7 @@ export async function listSolvedIssues(
     .where(eq(solvedIssues.tenantId, tenantId));
 
   const visibleIssues = issues.filter(
-    (issue) => issue.audienceRecommendation !== "internal" && issue.status !== "archived",
+    (issue) => issue.audienceRecommendation !== "internal" && issue.status === "published",
   );
 
   if (visibleIssues.length === 0) {
@@ -127,6 +127,49 @@ export async function listSolvedIssues(
   const query = options.q?.trim().toLowerCase();
 
   return visibleIssues
+    .map((issue) => ({
+      ...issue,
+      stepCount: stepCountByIssueId.get(issue.id) ?? 0,
+    }))
+    .filter((issue) => {
+      if (!query) {
+        return true;
+      }
+
+      const haystack = `${issue.title}\n${issue.symptom}\n${issue.rootCause ?? ""}`.toLowerCase();
+      return haystack.includes(query);
+    })
+    .sort((left, right) => right.updatedAt.getTime() - left.updatedAt.getTime())
+    .slice(0, options.limit ?? 12);
+}
+
+export async function listAdminSolvedIssues(
+  database: Database,
+  tenantId: string,
+  options: { q?: string; limit?: number } = {},
+) {
+  const issues = await database
+    .select()
+    .from(solvedIssues)
+    .where(eq(solvedIssues.tenantId, tenantId));
+
+  if (issues.length === 0) {
+    return [];
+  }
+
+  const steps = await database
+    .select()
+    .from(solvedIssueSteps)
+    .where(inArray(solvedIssueSteps.solvedIssueId, issues.map((issue) => issue.id)));
+
+  const stepCountByIssueId = new Map<string, number>();
+  for (const step of steps) {
+    stepCountByIssueId.set(step.solvedIssueId, (stepCountByIssueId.get(step.solvedIssueId) ?? 0) + 1);
+  }
+
+  const query = options.q?.trim().toLowerCase();
+
+  return issues
     .map((issue) => ({
       ...issue,
       stepCount: stepCountByIssueId.get(issue.id) ?? 0,
@@ -175,4 +218,21 @@ export async function getSolvedIssueById(database: Database, tenantId: string, i
     deviceModelIds: deviceLinks.map((row) => row.deviceModelId),
     steps: steps.sort((left, right) => left.stepNumber - right.stepNumber),
   };
+}
+
+export async function publishSolvedIssue(database: Database, tenantId: string, issueId: string) {
+  const [publishedIssue] = await database
+    .update(solvedIssues)
+    .set({
+      status: "published",
+      updatedAt: new Date(),
+    })
+    .where(and(eq(solvedIssues.id, issueId), eq(solvedIssues.tenantId, tenantId)))
+    .returning();
+
+  if (!publishedIssue) {
+    throw new AppError(404, "not_found", "Solved issue not found.");
+  }
+
+  return publishedIssue;
 }

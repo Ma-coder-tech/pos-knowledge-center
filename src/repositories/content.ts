@@ -267,7 +267,7 @@ export async function listKnowledgeBaseArticles(
     .limit(Math.max((options.limit ?? 12) * 4, 24));
 
   const visibleItems = items.filter(
-    (item) => item.audience !== "internal" && item.currentStatus !== "retired",
+    (item) => item.audience !== "internal" && item.currentStatus === "published",
   );
 
   if (visibleItems.length === 0) {
@@ -304,6 +304,67 @@ export async function listKnowledgeBaseArticles(
         status: item.currentStatus,
         audience: item.audience,
         updatedAt: item.updatedAt,
+      };
+    })
+    .filter((item) => {
+      if (!query) {
+        return true;
+      }
+
+      const haystack = `${item.title}\n${item.summary ?? ""}\n${item.preview}`.toLowerCase();
+      return haystack.includes(query);
+    })
+    .slice(0, options.limit ?? 12);
+}
+
+export async function listAdminArticles(
+  database: Database,
+  tenantId: string,
+  options: { q?: string; limit?: number } = {},
+) {
+  const items = await database
+    .select()
+    .from(contentItems)
+    .where(eq(contentItems.tenantId, tenantId))
+    .orderBy(desc(contentItems.updatedAt))
+    .limit(Math.max((options.limit ?? 12) * 4, 24));
+
+  if (items.length === 0) {
+    return [];
+  }
+
+  const versions = await database
+    .select()
+    .from(contentVersions)
+    .where(inArray(contentVersions.contentItemId, items.map((item) => item.id)))
+    .orderBy(desc(contentVersions.versionNumber));
+
+  const latestVersionByContentId = new Map<string, typeof contentVersions.$inferSelect>();
+  for (const version of versions) {
+    if (!latestVersionByContentId.has(version.contentItemId)) {
+      latestVersionByContentId.set(version.contentItemId, version);
+    }
+  }
+
+  const query = options.q?.trim().toLowerCase();
+
+  return items
+    .map((item) => {
+      const latestVersion = latestVersionByContentId.get(item.id);
+      const preview = latestVersion?.summary ?? latestVersion?.body ?? "";
+
+      return {
+        id: item.id,
+        slug: item.slug,
+        type: item.type,
+        title: latestVersion?.title ?? item.slug,
+        summary: latestVersion?.summary ?? null,
+        preview,
+        status: item.currentStatus,
+        audience: item.audience,
+        updatedAt: item.updatedAt,
+        latestVersionId: latestVersion?.id ?? null,
+        latestVersionNumber: latestVersion?.versionNumber ?? null,
       };
     })
     .filter((item) => {
@@ -447,4 +508,57 @@ export async function createContentVersion(
     .returning();
 
   return version;
+}
+
+export async function publishLatestContent(
+  database: Database,
+  tenantId: string,
+  contentId: string,
+) {
+  return database.transaction(async (tx) => {
+    const [content] = await tx
+      .select()
+      .from(contentItems)
+      .where(and(eq(contentItems.id, contentId), eq(contentItems.tenantId, tenantId)))
+      .limit(1);
+
+    if (!content) {
+      throw new AppError(404, "not_found", "Content item not found.");
+    }
+
+    const [latestVersion] = await tx
+      .select()
+      .from(contentVersions)
+      .where(eq(contentVersions.contentItemId, contentId))
+      .orderBy(desc(contentVersions.versionNumber))
+      .limit(1);
+
+    if (!latestVersion) {
+      throw new AppError(400, "validation_error", "Content must have at least one version before publishing.");
+    }
+
+    await tx
+      .update(contentVersions)
+      .set({
+        status: "published",
+        publishedAt: new Date(),
+        updatedAt: new Date(),
+      })
+      .where(eq(contentVersions.id, latestVersion.id));
+
+    const [publishedContent] = await tx
+      .update(contentItems)
+      .set({
+        currentStatus: "published",
+        currentPublishedVersionId: latestVersion.id,
+        updatedAt: new Date(),
+      })
+      .where(eq(contentItems.id, contentId))
+      .returning();
+
+    return {
+      content: publishedContent,
+      versionId: latestVersion.id,
+    };
+  });
 }

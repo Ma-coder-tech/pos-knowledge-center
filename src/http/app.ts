@@ -4,6 +4,7 @@ import { toAppError } from "../lib/errors";
 import { createCatalogRouter } from "./routes/catalog";
 import { createContentRouter } from "./routes/content";
 import { createFlowsRouter } from "./routes/flows";
+import { createAdminRouter } from "./routes/admin";
 import { createKnowledgeBaseRouter } from "./routes/kb";
 import { createSolvedIssuesRouter } from "./routes/solved-issues";
 import { createTenantsRouter } from "./routes/tenants";
@@ -40,6 +41,7 @@ export function createApp(database: Database = db) {
   );
 
   app.get("/", (context) => context.redirect("/kb"));
+  app.route("/admin", createAdminRouter(database));
   app.route("/kb", createKnowledgeBaseRouter(database));
 
   app.route("/api/v1/tenants", createTenantsRouter(database));
